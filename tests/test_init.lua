@@ -102,7 +102,7 @@ T.test("init: send_all formats, dispatches, clears", function()
   local agents = require("herdr-nvim.agents")
   local sent = {}
   local o1, o2, o3 = ui.pick_agent, dispatch.send, agents.list
-  ui.pick_agent = function(_, cb) cb({ pane_id = "wZ:p9", title = "π", status = "idle" }) end
+  ui.pick_agent = function(_, cb) cb({ pane_id = "wZ:p9", title = "π", status = "idle", cwd = "/x/y/z" }) end
   dispatch.send = function(pane, text, opts) sent = { pane, text, opts }; return true end
   local dir = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(b), ":h")
   agents.list = function() return { { pane_id = "wZ:p9", title = "π", status = "idle", cwd = dir } } end
@@ -206,7 +206,7 @@ T.test("init: send_all retains comments when dispatch.send fails", function()
   local dispatch = require("herdr-nvim.dispatch")
   local agents = require("herdr-nvim.agents")
   local o1, o2, o3 = ui.pick_agent, dispatch.send, agents.list
-  ui.pick_agent = function(_, cb) cb({ pane_id = "wZ:p9", title = "π", status = "idle" }) end
+  ui.pick_agent = function(_, cb) cb({ pane_id = "wZ:p9", title = "π", status = "idle", cwd = "/x/y/z" }) end
   dispatch.send = function() return false, "boom" end
   agents.list = function() return { { pane_id = "wZ:p9", title = "π", status = "idle" } } end
 
@@ -351,4 +351,34 @@ T.test("init: ref_line and ref_selection resolve their own span", function()
 
   T.eq(sent[1], "span.lua:3 ", "ref_line targets the cursor line")
   T.eq(sent[2], "span.lua:2-4 ", "ref_selection targets the visual marks")
+end)
+
+T.test("init: send_all honors custom prompt_formatter", function()
+  comments.clear()
+  local b = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(b, 0, -1, false, { "alpha" })
+  vim.api.nvim_buf_set_name(b, "/tmp/hn-fmt.lua")
+  comments.add(b, 1, 1, "check this")
+
+  local ui = require("herdr-nvim.ui")
+  local dispatch = require("herdr-nvim.dispatch")
+  local agents = require("herdr-nvim.agents")
+  local seen_items, seen_ctx, sent_text
+  local o1, o2, o3 = ui.pick_agent, dispatch.send, agents.list
+  ui.pick_agent = function(_, cb) cb({ pane_id = "wZ:p9", title = "π", status = "idle", cwd = "/x/y/z" }) end
+  dispatch.send = function(_, text) sent_text = text; return true end
+  agents.list = function() return { { pane_id = "wZ:p9", title = "π", status = "idle", cwd = "/x/y/z" } } end
+
+  local orig_fmt = hn.config.prompt_formatter
+  hn.config.prompt_formatter = function(items, ctx)
+    seen_items, seen_ctx = items, ctx
+    return "custom:" .. items[1].comment.text
+  end
+  hn.send_all({})
+  hn.config.prompt_formatter = orig_fmt
+  ui.pick_agent, dispatch.send, agents.list = o1, o2, o3
+
+  T.eq(sent_text, "custom:check this")
+  T.eq(#seen_items, 1)
+  T.ok(seen_ctx.cwd ~= nil, "ctx now carries agent cwd")
 end)

@@ -5,7 +5,7 @@ local agents = require("herdr-nvim.agents")
 local dispatch = require("herdr-nvim.dispatch")
 local ui = require("herdr-nvim.ui")
 
-M.config = { prefix = "<leader>a", keymaps = true, clear_after_send = true }
+M.config = { prefix = "<leader>a", keymaps = true, clear_after_send = true, prompt_formatter = nil }
 
 local function map(mode, lhs, rhs, desc)
   if vim.fn.maparg(vim.api.nvim_replace_termcodes(lhs, true, true, true), mode) ~= "" then
@@ -146,7 +146,11 @@ function M.send_all(opts)
   local cwd = first_file ~= "" and vim.fn.fnamemodify(first_file, ":h") or nil
   local header_context = M._git_context(cwd)
   deliver_to_agent(function(agent)
-    return prompt.format(items, { header_context = header_context, cwd = agent.cwd })
+    -- prompt_formatter (optional) fully replaces the built-in wrapping prompt;
+    -- signature: fn(items, ctx) -> string, items = { { comment = {...}, snippet = {...} }, ... },
+    -- ctx = { header_context = "repo: ..., branch: ...", cwd = agent_cwd } (either may be nil)
+    local fmt = M.config.prompt_formatter or prompt.format
+    return fmt(items, { header_context = header_context, cwd = agent.cwd })
   end, opts, function(agent)
     if M.config.clear_after_send then
       for _, c in ipairs(list) do
